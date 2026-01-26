@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Timer App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #222;
+            color: white;
+        }
+        
+        .timer-button {
+            display: block;
+            width: 200px;
+            height: 60px;
+            margin: 10px 0;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #444;
+            color: white;
+        }
+        
+        .timer-button:hover {
+            background: #555;
+        }
+        
+        .timer-button.running {
+            background: #0066cc;
+        }
+        
+        .timer-button.finished {
+            background: #cc0000;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <h2>Timer App</h2>
+    
+    <button class="timer-button" data-duration="3">3 sec</button>
+    <button class="timer-button" data-duration="300">5 min</button>
+    <button class="timer-button" data-duration="900">15 min</button>
+
+    <script>
+        class Timer {
+            constructor(button) {
+                this.button = button;
+                this.duration = parseInt(button.dataset.duration);
+                this.remaining = 0;
+                this.interval = null;
+                this.originalText = button.textContent;
+                
+                button.addEventListener('click', () => this.handleClick());
+                button.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    this.stop();
+                });
+            }
+            
+            handleClick() {
+                if (this.interval) {
+                    this.reset();
+                } else {
+                    this.start();
+                }
+            }
+            
+            start() {
+                this.remaining = this.duration;
+                this.button.className = 'timer-button running';
+                this.interval = setInterval(() => this.tick(), 1000);
+                this.updateDisplay();
+            }
+            
+            tick() {
+                this.remaining--;
+                if (this.remaining <= 0) {
+                    this.finish();
+                } else {
+                    this.updateDisplay();
+                }
+            }
+            
+            finish() {
+                clearInterval(this.interval);
+                this.interval = null;
+                this.button.className = 'timer-button finished';
+                this.button.textContent = this.originalText + ' - DONE!';
+            }
+            
+            reset() {
+                this.stop();
+                this.start();
+            }
+            
+            stop() {
+                if (this.interval) {
+                    clearInterval(this.interval);
+                    this.interval = null;
+                }
+                this.button.className = 'timer-button';
+                this.button.textContent = this.originalText;
+            }
+            
+            updateDisplay() {
+                const minutes = Math.floor(this.remaining / 60);
+                const seconds = this.remaining % 60;
+                this.button.textContent = `${this.originalText} - ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+        
+        document.querySelectorAll('.timer-button').forEach(button => {
+            new Timer(button);
+        });
+    </script>
+</body>
+</html>

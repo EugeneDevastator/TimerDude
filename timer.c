@@ -4,7 +4,7 @@
 
 #define TIMER_COUNT 3
 #define WINDOW_WIDTH 220
-#define WINDOW_HEIGHT 180
+#define WINDOW_HEIGHT 200
 
 typedef struct {
     int duration;
@@ -19,11 +19,13 @@ Timer timers[TIMER_COUNT];
 Sound dingSound;
 bool soundLoaded = false;
 Font consolasFont;
+Vector2 dragOffset = {0};
+bool isDragging = false;
 
 void InitTimers() {
-    Timer t1 = {60, 0, false, false, "1 min", {10, 20, 200, 40}};
-    Timer t2 = {300, 0, false, false, "5 min", {10, 70, 200, 40}};
-    Timer t3 = {900, 0, false, false, "15 min", {10, 120, 200, 40}};
+    Timer t1 = {60, 0, false, false, "1 min", {10, 40, 200, 40}};
+    Timer t2 = {300, 0, false, false, "5 min", {10, 90, 200, 40}};
+    Timer t3 = {900, 0, false, false, "15 min", {10, 140, 200, 40}};
     
     timers[0] = t1;
     timers[1] = t2;
@@ -58,7 +60,7 @@ void DrawTimer(Timer* timer) {
     DrawRectangleRec(timer->rect, bgColor);
     
     if (timer->running && timer->remaining > 0) {
-        float progress = (float)(timer->duration - timer->remaining) / timer->duration;
+        float progress = (float)timer->remaining / timer->duration; // Decreases left to right
         Rectangle progressRect = {
             timer->rect.x,
             timer->rect.y,
@@ -106,8 +108,8 @@ void HandleTimerRightClick(Timer* timer) {
 }
 
 int main() {
-    SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_RESIZABLE);
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Timer App");
+    SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "TimerDude");
     SetTargetFPS(60);
     
     consolasFont = LoadFontEx("C:/Windows/Fonts/consola.ttf", 24, 0, 0);
@@ -135,6 +137,11 @@ int main() {
                     break;
                 }
             }
+            
+            if (!clickedTimer && mousePos.y < 30) {
+                isDragging = true;
+                dragOffset = mousePos;
+            }
         }
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
@@ -143,6 +150,18 @@ int main() {
                     HandleTimerRightClick(&timers[i]);
                     break;
                 }
+            }
+        }
+        
+        if (isDragging) {
+            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                Vector2 windowPos = GetWindowPosition();
+                SetWindowPosition(
+                    windowPos.x + mousePos.x - dragOffset.x,
+                    windowPos.y + mousePos.y - dragOffset.y
+                );
+            } else {
+                isDragging = false;
             }
         }
         
@@ -157,6 +176,10 @@ int main() {
         
         BeginDrawing();
         ClearBackground(WHITE);
+        
+        // Draw title bar
+        DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
+        DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
         
         for (int i = 0; i < TIMER_COUNT; i++) {
             DrawTimer(&timers[i]);

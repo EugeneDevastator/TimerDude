@@ -4,7 +4,7 @@
 
 #define TIMER_COUNT 3
 #define WINDOW_WIDTH 220
-#define WINDOW_HEIGHT 200
+#define WINDOW_HEIGHT 180
 
 typedef struct {
     int duration;
@@ -17,14 +17,13 @@ typedef struct {
 
 Timer timers[TIMER_COUNT];
 Sound dingSound;
-Vector2 dragOffset = {0};
-bool isDragging = false;
 bool soundLoaded = false;
+Font consolasFont;
 
 void InitTimers() {
-    Timer t1 = {60, 0, false, false, "1 min", {10, 40, 200, 40}};
-    Timer t2 = {300, 0, false, false, "5 min", {10, 90, 200, 40}};
-    Timer t3 = {900, 0, false, false, "15 min", {10, 140, 200, 40}};
+    Timer t1 = {60, 0, false, false, "1 min", {10, 20, 200, 40}};
+    Timer t2 = {300, 0, false, false, "5 min", {10, 70, 200, 40}};
+    Timer t3 = {900, 0, false, false, "15 min", {10, 120, 200, 40}};
     
     timers[0] = t1;
     timers[1] = t2;
@@ -45,15 +44,15 @@ void UpdateTimer(Timer* timer) {
 }
 
 void DrawTimer(Timer* timer) {
-    Color bgColor = DARKGRAY;
-    Color fillColor = BLUE;
+    Color bgColor = LIGHTGRAY;
+    Color fillColor = (Color){100, 149, 237, 255}; // Cornflower blue
     
     if (timer->finished) {
-        bgColor = RED;
-        fillColor = (Color){139, 0, 0, 255}; // DARKRED
+        bgColor = (Color){255, 182, 193, 255}; // Light pink
+        fillColor = (Color){220, 20, 60, 255}; // Crimson
     } else if (timer->running) {
-        bgColor = DARKBLUE;
-        fillColor = LIGHTGRAY;
+        bgColor = (Color){173, 216, 230, 255}; // Light blue
+        fillColor = (Color){70, 130, 180, 255}; // Steel blue
     }
     
     DrawRectangleRec(timer->rect, bgColor);
@@ -69,8 +68,6 @@ void DrawTimer(Timer* timer) {
         DrawRectangleRec(progressRect, fillColor);
     }
     
-    DrawRectangleLinesEx(timer->rect, 2, WHITE);
-    
     char text[64];
     if (timer->running) {
         int mins = timer->remaining / 60;
@@ -83,13 +80,13 @@ void DrawTimer(Timer* timer) {
     }
     
     int fontSize = 24;
-    Vector2 textSize = MeasureTextEx(GetFontDefault(), text, fontSize, 1);
+    Vector2 textSize = MeasureTextEx(consolasFont, text, fontSize, 1);
     Vector2 textPos = {
         timer->rect.x + (timer->rect.width - textSize.x) / 2,
         timer->rect.y + (timer->rect.height - textSize.y) / 2
     };
     
-    DrawTextEx(GetFontDefault(), text, textPos, fontSize, 1, WHITE);
+    DrawTextEx(consolasFont, text, textPos, fontSize, 1, BLACK);
 }
 
 void HandleTimerClick(Timer* timer) {
@@ -109,9 +106,14 @@ void HandleTimerRightClick(Timer* timer) {
 }
 
 int main() {
-    SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
+    SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_RESIZABLE);
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Timer App");
     SetTargetFPS(60);
+    
+    consolasFont = LoadFontEx("C:/Windows/Fonts/consola.ttf", 24, 0, 0);
+    if (consolasFont.texture.id == 0) {
+        consolasFont = GetFontDefault();
+    }
     
     InitAudioDevice();
     if (FileExists("ding.wav")) {
@@ -133,11 +135,6 @@ int main() {
                     break;
                 }
             }
-            
-            if (!clickedTimer && mousePos.y < 30) {
-                isDragging = true;
-                dragOffset = mousePos;
-            }
         }
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
@@ -146,17 +143,6 @@ int main() {
                     HandleTimerRightClick(&timers[i]);
                     break;
                 }
-            }
-        }
-        
-        if (isDragging) {
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                Vector2 delta = {mousePos.x - dragOffset.x, mousePos.y - dragOffset.y};
-                Vector2 windowPos = GetWindowPosition();
-                SetWindowPosition(windowPos.x + delta.x, windowPos.y + delta.y);
-                dragOffset = mousePos;
-            } else {
-                isDragging = false;
             }
         }
         
@@ -170,10 +156,7 @@ int main() {
         }
         
         BeginDrawing();
-        ClearBackground(BLACK);
-        
-        DrawRectangle(0, 0, WINDOW_WIDTH, 30, GRAY);
-        DrawText("Timer App", 10, 8, 16, WHITE);
+        ClearBackground(WHITE);
         
         for (int i = 0; i < TIMER_COUNT; i++) {
             DrawTimer(&timers[i]);
@@ -182,6 +165,9 @@ int main() {
         EndDrawing();
     }
     
+    if (consolasFont.texture.id != 0 && consolasFont.texture.id != GetFontDefault().texture.id) {
+        UnloadFont(consolasFont);
+    }
     if (soundLoaded) {
         UnloadSound(dingSound);
     }

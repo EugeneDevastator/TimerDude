@@ -6,12 +6,14 @@
 #define WINDOW_WIDTH 220
 
 typedef struct {
+    int originalDuration;
     int duration;
     int remaining;
     bool running;
     bool finished;
     char label[32];
     Rectangle rect;
+    double startTime;
 } Timer;
 
 Timer timers[MAX_TIMERS];
@@ -26,10 +28,12 @@ void AddTimer(int seconds) {
     if (timerCount >= MAX_TIMERS) return;
     
     Timer* t = &timers[timerCount];
+    t->originalDuration = seconds;
     t->duration = seconds;
     t->remaining = 0;
     t->running = false;
     t->finished = false;
+    t->startTime = 0;
     
     // Generate label
     if (seconds < 60) {
@@ -113,12 +117,25 @@ void DrawTimer(Timer* timer) {
 }
 
 void HandleTimerClick(Timer* timer) {
+    double currentTime = GetTime();
+    
     if (timer->running) {
-        timer->remaining = timer->duration;
+        // Check if clicked within 1 second of start
+        if (currentTime - timer->startTime <= 1.0) {
+            // Add original duration and reset to new max
+            timer->duration += timer->originalDuration;
+            timer->remaining = timer->duration;
+        } else {
+            // Normal behavior - reset to original duration
+            timer->duration = timer->originalDuration;
+            timer->remaining = timer->duration;
+        }
     } else {
         timer->running = true;
         timer->finished = false;
+        timer->duration = timer->originalDuration;
         timer->remaining = timer->duration;
+        timer->startTime = currentTime;
     }
 }
 
@@ -126,6 +143,8 @@ void HandleTimerRightClick(Timer* timer) {
     timer->running = false;
     timer->finished = false;
     timer->remaining = 0;
+    timer->duration = timer->originalDuration;
+    timer->startTime = 0;
 }
 
 int main() {

@@ -2,34 +2,55 @@
 #include <stdio.h>
 #include <string.h>
 
-#define TIMER_COUNT 3
+#define MAX_TIMERS 10
 #define WINDOW_WIDTH 220
-#define WINDOW_HEIGHT 200
 
 typedef struct {
     int duration;
     int remaining;
     bool running;
     bool finished;
-    char label[16];
+    char label[32];
     Rectangle rect;
 } Timer;
 
-Timer timers[TIMER_COUNT];
+Timer timers[MAX_TIMERS];
+int timerCount = 0;
 Sound dingSound;
 bool soundLoaded = false;
 Font consolasFont;
 Vector2 dragOffset = {0};
 bool isDragging = false;
 
-void InitTimers() {
-    Timer t1 = {60, 0, false, false, "1 min", {10, 40, 200, 40}};
-    Timer t2 = {300, 0, false, false, "5 min", {10, 90, 200, 40}};
-    Timer t3 = {900, 0, false, false, "15 min", {10, 140, 200, 40}};
+void AddTimer(int seconds) {
+    if (timerCount >= MAX_TIMERS) return;
     
-    timers[0] = t1;
-    timers[1] = t2;
-    timers[2] = t3;
+    Timer* t = &timers[timerCount];
+    t->duration = seconds;
+    t->remaining = 0;
+    t->running = false;
+    t->finished = false;
+    
+    // Generate label
+    if (seconds < 60) {
+        sprintf(t->label, "%ds", seconds);
+    } else if (seconds % 60 == 0) {
+        sprintf(t->label, "%dm", seconds / 60);
+    } else {
+        sprintf(t->label, "%dm%ds", seconds / 60, seconds % 60);
+    }
+    
+    // Set position
+    t->rect = (Rectangle){10, 40 + timerCount * 50, 200, 40};
+    
+    timerCount++;
+}
+
+void SetupTimers(int durations[], int count) {
+    timerCount = 0;
+    for (int i = 0; i < count && i < MAX_TIMERS; i++) {
+        AddTimer(durations[i]);
+    }
 }
 
 void UpdateTimer(Timer* timer) {
@@ -53,14 +74,14 @@ void DrawTimer(Timer* timer) {
         bgColor = (Color){255, 182, 193, 255}; // Light pink
         fillColor = (Color){220, 20, 60, 255}; // Crimson
     } else if (timer->running) {
-        bgColor = (Color){173, 216, 230, 255}; // Light blue
-        fillColor = (Color){70, 130, 180, 255}; // Steel blue
+        bgColor = (Color){70, 130, 180, 255}; // Steel blue
+        fillColor = (Color){173, 216, 230, 255}; // Light blue
     }
     
     DrawRectangleRec(timer->rect, bgColor);
     
     if (timer->running && timer->remaining > 0) {
-        float progress = (float)timer->remaining / timer->duration; // Decreases left to right
+        float progress = (float)(timer->duration - timer->remaining) / timer->duration; // Fills left to right
         Rectangle progressRect = {
             timer->rect.x,
             timer->rect.y,
@@ -108,8 +129,14 @@ void HandleTimerRightClick(Timer* timer) {
 }
 
 int main() {
+    // Setup timers - change this line to customize
+    int timerDurations[] = {60, 60*5, 60*15,60*45,60*90};
+    int timerDurationCount = sizeof(timerDurations) / sizeof(timerDurations[0]);
+    
+    int windowHeight = 40 + timerDurationCount * 50 + 10;
+    
     SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "TimerDude");
+    InitWindow(WINDOW_WIDTH, windowHeight, "TimerDude");
     SetTargetFPS(60);
     
     consolasFont = LoadFontEx("C:/Windows/Fonts/consola.ttf", 24, 0, 0);
@@ -123,14 +150,14 @@ int main() {
         soundLoaded = true;
     }
     
-    InitTimers();
+    SetupTimers(timerDurations, timerDurationCount);
     
     while (!WindowShouldClose()) {
         Vector2 mousePos = GetMousePosition();
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             bool clickedTimer = false;
-            for (int i = 0; i < TIMER_COUNT; i++) {
+            for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
                     HandleTimerClick(&timers[i]);
                     clickedTimer = true;
@@ -145,7 +172,7 @@ int main() {
         }
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-            for (int i = 0; i < TIMER_COUNT; i++) {
+            for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
                     HandleTimerRightClick(&timers[i]);
                     break;
@@ -169,7 +196,7 @@ int main() {
         frameCounter++;
         if (frameCounter >= 60) {
             frameCounter = 0;
-            for (int i = 0; i < TIMER_COUNT; i++) {
+            for (int i = 0; i < timerCount; i++) {
                 UpdateTimer(&timers[i]);
             }
         }
@@ -177,11 +204,10 @@ int main() {
         BeginDrawing();
         ClearBackground(WHITE);
         
-        // Draw title bar
         DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
         DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
         
-        for (int i = 0; i < TIMER_COUNT; i++) {
+        for (int i = 0; i < timerCount; i++) {
             DrawTimer(&timers[i]);
         }
         

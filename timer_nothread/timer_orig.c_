@@ -1,8 +1,6 @@
 #include "raylib.h"
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
-#include <unistd.h>
 
 #define MAX_TIMERS 10
 #define WINDOW_WIDTH 220
@@ -16,6 +14,7 @@ typedef struct {
     char label[32];
     Rectangle rect;
     double startTime;
+    double lastUpdate;
 } Timer;
 
 Timer timers[MAX_TIMERS];
@@ -25,38 +24,6 @@ bool soundLoaded = false;
 Font consolasFont;
 Vector2 dragOffset = {0};
 bool isDragging = false;
-pthread_t timerThread;
-bool threadRunning = true;
-pthread_mutex_t timerMutex = PTHREAD_MUTEX_INITIALIZER;
-
-// Function declarations
-void UpdateTimer(Timer* timer);
-void* TimerThreadFunction(void* arg);
-
-void UpdateTimer(Timer* timer) {
-    if (timer->running && !timer->finished) {
-        timer->remaining--;
-        if (timer->remaining <= 0) {
-            timer->finished = true;
-            timer->running = false;
-            if (soundLoaded) {
-                PlaySound(dingSound);
-            }
-        }
-    }
-}
-
-void* TimerThreadFunction(void* arg) {
-    while (threadRunning) {
-        pthread_mutex_lock(&timerMutex);
-        for (int i = 0; i < timerCount; i++) {
-            UpdateTimer(&timers[i]);
-        }
-        pthread_mutex_unlock(&timerMutex);
-        sleep(1);
-    }
-    return NULL;
-}
 
 void AddTimer(int seconds) {
     if (timerCount >= MAX_TIMERS) return;
@@ -68,6 +35,7 @@ void AddTimer(int seconds) {
     t->running = false;
     t->finished = false;
     t->startTime = 0;
+    t->lastUpdate = 0;
     
     if (seconds < 60) {
         sprintf(t->label, "%ds", seconds);
@@ -85,6 +53,23 @@ void SetupTimers(int durations[], int count) {
     timerCount = 0;
     for (int i = 0; i < count && i < MAX_TIMERS; i++) {
         AddTimer(durations[i]);
+    }
+}
+
+void UpdateTimer(Timer* timer, double currentTime) {
+    if (timer->running && !timer->finished) {
+        if (currentTime - timer->lastUpdate >= 1.0) {
+            timer->remaining--;
+            timer->lastUpdate = currentTime;
+            
+            if (timer->remaining <= 0) {
+                timer->finished = true;
+                timer->running = false;
+                if (soundLoaded) {
+                    PlaySound(dingSound);
+                }
+            }
+        }
     }
 }
 
@@ -137,7 +122,6 @@ void DrawTimer(Timer* timer) {
 void HandleTimerClick(Timer* timer) {
     double currentTime = GetTime();
     
-    pthread_mutex_lock(&timerMutex);
     if (timer->running) {
         if (currentTime - timer->startTime <= 1.0) {
             timer->duration += timer->originalDuration;
@@ -152,23 +136,20 @@ void HandleTimerClick(Timer* timer) {
         timer->duration = timer->originalDuration;
         timer->remaining = timer->duration;
         timer->startTime = currentTime;
+        timer->lastUpdate = currentTime;
     }
-    pthread_mutex_unlock(&timerMutex);
 }
 
 void HandleTimerRightClick(Timer* timer) {
-    pthread_mutex_lock(&timerMutex);
     timer->running = false;
     timer->finished = false;
     timer->remaining = 0;
     timer->duration = timer->originalDuration;
     timer->startTime = 0;
-    pthread_mutex_unlock(&timerMutex);
+    timer->lastUpdate = 0;
 }
 
 int main() {
-
-            EnableEventWaiting();
     int timerDurations[] = {60, 300, 900, 2700, 5400};
     int timerDurationCount = sizeof(timerDurations) / sizeof(timerDurations[0]);
     
@@ -176,7 +157,6 @@ int main() {
     
     SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
     InitWindow(WINDOW_WIDTH, windowHeight, "TimerDude");
-    SetTargetFPS(10);
 
     consolasFont = LoadFontEx("C:/Windows/Fonts/consola.ttf", 24, 0, 0);
     if (consolasFont.texture.id == 0) {
@@ -191,15 +171,15 @@ int main() {
     
     SetupTimers(timerDurations, timerDurationCount);
     
-    pthread_create(&timerThread, NULL, TimerThreadFunction, NULL);
-
+    double lastTime = GetTime();
+    
     while (!WindowShouldClose()) {
- 
-        bool hasInput = false;
+        double currentTime = GetTime();
+        
+        PollInputEvents();
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             Vector2 mousePos = GetMousePosition();
-            hasInput = true;
             bool clickedTimer = false;
             for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
@@ -217,7 +197,6 @@ int main() {
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
             Vector2 mousePos = GetMousePosition();
-            hasInput = true;
             for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
                     HandleTimerRightClick(&timers[i]);
@@ -227,7 +206,6 @@ int main() {
         }
         
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-                    Vector2 mousePos = GetMousePosition();
             isDragging = false;
         }
         
@@ -239,24 +217,31 @@ int main() {
                 windowPos.y + mousePos.y - dragOffset.y
             );
         }
-   EnableEventWaiting();
+        
+        for (int i = 0; i < timerCount; i++) {
+            UpdateTimer(&timers[i], currentTime);
+        }
+
         BeginDrawing();
             ClearBackground(WHITE);
             
             DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
             DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
             
-            pthread_mutex_lock(&timerMutex);
             for (int i = 0; i < timerCount; i++) {
                 DrawTimer(&timers[i]);
             }
-            pthread_mutex_unlock(&timerMutex);
         EndDrawing();
+        
+        SwapScreenBuffer();
+        
+        double nextFrame = lastTime + 1.0/60.0;
+        double waitTime = nextFrame - GetTime();
+        if (waitTime > 0) {
+            WaitTime(waitTime);
+        }
+        lastTime = GetTime();
     }
-    
-    threadRunning = false;
-    pthread_join(timerThread, NULL);
-    pthread_mutex_destroy(&timerMutex);
     
     if (consolasFont.texture.id != 0 && consolasFont.texture.id != GetFontDefault().texture.id) {
         UnloadFont(consolasFont);

@@ -23,6 +23,8 @@ bool soundLoaded = false;
 Font consolasFont;
 Vector2 dragOffset = {0};
 bool isDragging = false;
+bool windowNeedsRedraw = true;
+int frameCounter = 0;
 
 void AddTimer(int seconds) {
     if (timerCount >= MAX_TIMERS) return;
@@ -35,7 +37,6 @@ void AddTimer(int seconds) {
     t->finished = false;
     t->startTime = 0;
     
-    // Generate label
     if (seconds < 60) {
         sprintf(t->label, "%ds", seconds);
     } else if (seconds % 60 == 0) {
@@ -44,9 +45,7 @@ void AddTimer(int seconds) {
         sprintf(t->label, "%dm%ds", seconds / 60, seconds % 60);
     }
     
-    // Set position
     t->rect = (Rectangle){10, 40 + timerCount * 50, 200, 40};
-    
     timerCount++;
 }
 
@@ -63,29 +62,32 @@ void UpdateTimer(Timer* timer) {
         if (timer->remaining <= 0) {
             timer->finished = true;
             timer->running = false;
+            windowNeedsRedraw = true;
             if (soundLoaded) {
                 PlaySound(dingSound);
             }
+        } else {
+            windowNeedsRedraw = true;
         }
     }
 }
 
 void DrawTimer(Timer* timer) {
     Color bgColor = LIGHTGRAY;
-    Color fillColor = (Color){100, 149, 237, 255}; // Cornflower blue
+    Color fillColor = (Color){100, 149, 237, 255};
     
     if (timer->finished) {
-        bgColor = (Color){255, 182, 193, 255}; // Light pink
-        fillColor = (Color){220, 20, 60, 255}; // Crimson
+        bgColor = (Color){255, 182, 193, 255};
+        fillColor = (Color){220, 20, 60, 255};
     } else if (timer->running) {
-        bgColor = (Color){70, 130, 180, 255}; // Steel blue
-        fillColor = (Color){173, 216, 230, 255}; // Light blue
+        bgColor = (Color){70, 130, 180, 255};
+        fillColor = (Color){173, 216, 230, 255};
     }
     
     DrawRectangleRec(timer->rect, bgColor);
     
     if (timer->running && timer->remaining > 0) {
-        float progress = (float)(timer->duration - timer->remaining) / timer->duration; // Fills left to right
+        float progress = (float)(timer->duration - timer->remaining) / timer->duration;
         Rectangle progressRect = {
             timer->rect.x,
             timer->rect.y,
@@ -120,13 +122,10 @@ void HandleTimerClick(Timer* timer) {
     double currentTime = GetTime();
     
     if (timer->running) {
-        // Check if clicked within 1 second of start
         if (currentTime - timer->startTime <= 1.0) {
-            // Add original duration and reset to new max
             timer->duration += timer->originalDuration;
             timer->remaining = timer->duration;
         } else {
-            // Normal behavior - reset to original duration
             timer->duration = timer->originalDuration;
             timer->remaining = timer->duration;
         }
@@ -137,6 +136,7 @@ void HandleTimerClick(Timer* timer) {
         timer->remaining = timer->duration;
         timer->startTime = currentTime;
     }
+    windowNeedsRedraw = true;
 }
 
 void HandleTimerRightClick(Timer* timer) {
@@ -145,19 +145,21 @@ void HandleTimerRightClick(Timer* timer) {
     timer->remaining = 0;
     timer->duration = timer->originalDuration;
     timer->startTime = 0;
+    windowNeedsRedraw = true;
 }
 
 int main() {
-    // Setup timers - change this line to customize
-    int timerDurations[] = {60, 60*5, 60*15,60*45,60*90};
+
+            EnableEventWaiting();
+    int timerDurations[] = {60, 300, 900, 2700, 5400};
     int timerDurationCount = sizeof(timerDurations) / sizeof(timerDurations[0]);
     
     int windowHeight = 40 + timerDurationCount * 50 + 10;
     
     SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
     InitWindow(WINDOW_WIDTH, windowHeight, "TimerDude");
-    SetTargetFPS(60);
-    
+    SetTargetFPS(10);
+
     consolasFont = LoadFontEx("C:/Windows/Fonts/consola.ttf", 24, 0, 0);
     if (consolasFont.texture.id == 0) {
         consolasFont = GetFontDefault();
@@ -170,11 +172,14 @@ int main() {
     }
     
     SetupTimers(timerDurations, timerDurationCount);
-    
+    EnableEventWaiting();
     while (!WindowShouldClose()) {
-        Vector2 mousePos = GetMousePosition();
+
+        bool hasInput = false;
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    Vector2 mousePos = GetMousePosition();
+            hasInput = true;
             bool clickedTimer = false;
             for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
@@ -191,6 +196,8 @@ int main() {
         }
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+                    Vector2 mousePos = GetMousePosition();
+            hasInput = true;
             for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
                     HandleTimerRightClick(&timers[i]);
@@ -199,38 +206,39 @@ int main() {
             }
         }
         
-        if (isDragging) {
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                Vector2 windowPos = GetWindowPosition();
-                SetWindowPosition(
-                    windowPos.x + mousePos.x - dragOffset.x,
-                    windowPos.y + mousePos.y - dragOffset.y
-                );
-            } else {
-                isDragging = false;
-            }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    Vector2 mousePos = GetMousePosition();
+            isDragging = false;
         }
         
-        static int frameCounter = 0;
+        if (isDragging && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                    Vector2 mousePos = GetMousePosition();
+            Vector2 windowPos = GetWindowPosition();
+            SetWindowPosition(
+                windowPos.x + mousePos.x - dragOffset.x,
+                windowPos.y + mousePos.y - dragOffset.y
+            );
+        }
+        
         frameCounter++;
-        if (frameCounter >= 60) {
+        if (frameCounter >= 10) {
             frameCounter = 0;
             for (int i = 0; i < timerCount; i++) {
                 UpdateTimer(&timers[i]);
             }
         }
-        
+
         BeginDrawing();
-        ClearBackground(WHITE);
-        
-        DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
-        DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
-        
-        for (int i = 0; i < timerCount; i++) {
-            DrawTimer(&timers[i]);
-        }
-        
+            ClearBackground(WHITE);
+            
+            DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
+            DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
+            
+            for (int i = 0; i < timerCount; i++) {
+                DrawTimer(&timers[i]);
+            }
         EndDrawing();
+
     }
     
     if (consolasFont.texture.id != 0 && consolasFont.texture.id != GetFontDefault().texture.id) {

@@ -1,6 +1,8 @@
 #include "raylib.h"
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 
 #define MAX_TIMERS 10
 #define WINDOW_WIDTH 220
@@ -24,7 +26,41 @@ Font consolasFont;
 Vector2 dragOffset = {0};
 bool isDragging = false;
 bool windowNeedsRedraw = true;
-int frameCounter = 0;
+pthread_t timerThread;
+bool threadRunning = true;
+pthread_mutex_t timerMutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Function declarations
+void UpdateTimer(Timer* timer);
+void* TimerThreadFunction(void* arg);
+
+void UpdateTimer(Timer* timer) {
+    if (timer->running && !timer->finished) {
+        timer->remaining--;
+        if (timer->remaining <= 0) {
+            timer->finished = true;
+            timer->running = false;
+            windowNeedsRedraw = true;
+            if (soundLoaded) {
+                PlaySound(dingSound);
+            }
+        } else {
+            windowNeedsRedraw = true;
+        }
+    }
+}
+
+void* TimerThreadFunction(void* arg) {
+    while (threadRunning) {
+        pthread_mutex_lock(&timerMutex);
+        for (int i = 0; i < timerCount; i++) {
+            UpdateTimer(&timers[i]);
+        }
+        pthread_mutex_unlock(&timerMutex);
+        sleep(1);
+    }
+    return NULL;
+}
 
 void AddTimer(int seconds) {
     if (timerCount >= MAX_TIMERS) return;
@@ -53,22 +89,6 @@ void SetupTimers(int durations[], int count) {
     timerCount = 0;
     for (int i = 0; i < count && i < MAX_TIMERS; i++) {
         AddTimer(durations[i]);
-    }
-}
-
-void UpdateTimer(Timer* timer) {
-    if (timer->running && !timer->finished) {
-        timer->remaining--;
-        if (timer->remaining <= 0) {
-            timer->finished = true;
-            timer->running = false;
-            windowNeedsRedraw = true;
-            if (soundLoaded) {
-                PlaySound(dingSound);
-            }
-        } else {
-            windowNeedsRedraw = true;
-        }
     }
 }
 
@@ -121,6 +141,7 @@ void DrawTimer(Timer* timer) {
 void HandleTimerClick(Timer* timer) {
     double currentTime = GetTime();
     
+    pthread_mutex_lock(&timerMutex);
     if (timer->running) {
         if (currentTime - timer->startTime <= 1.0) {
             timer->duration += timer->originalDuration;
@@ -136,15 +157,18 @@ void HandleTimerClick(Timer* timer) {
         timer->remaining = timer->duration;
         timer->startTime = currentTime;
     }
+    pthread_mutex_unlock(&timerMutex);
     windowNeedsRedraw = true;
 }
 
 void HandleTimerRightClick(Timer* timer) {
+    pthread_mutex_lock(&timerMutex);
     timer->running = false;
     timer->finished = false;
     timer->remaining = 0;
     timer->duration = timer->originalDuration;
     timer->startTime = 0;
+    pthread_mutex_unlock(&timerMutex);
     windowNeedsRedraw = true;
 }
 
@@ -172,13 +196,15 @@ int main() {
     }
     
     SetupTimers(timerDurations, timerDurationCount);
-    EnableEventWaiting();
+    
+    pthread_create(&timerThread, NULL, TimerThreadFunction, NULL);
+EnableEventWaiting();    
     while (!WindowShouldClose()) {
 
         bool hasInput = false;
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                    Vector2 mousePos = GetMousePosition();
+            Vector2 mousePos = GetMousePosition();
             hasInput = true;
             bool clickedTimer = false;
             for (int i = 0; i < timerCount; i++) {
@@ -196,7 +222,7 @@ int main() {
         }
         
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-                    Vector2 mousePos = GetMousePosition();
+            Vector2 mousePos = GetMousePosition();
             hasInput = true;
             for (int i = 0; i < timerCount; i++) {
                 if (CheckCollisionPointRec(mousePos, timers[i].rect)) {
@@ -212,20 +238,12 @@ int main() {
         }
         
         if (isDragging && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                    Vector2 mousePos = GetMousePosition();
+            Vector2 mousePos = GetMousePosition();
             Vector2 windowPos = GetWindowPosition();
             SetWindowPosition(
                 windowPos.x + mousePos.x - dragOffset.x,
                 windowPos.y + mousePos.y - dragOffset.y
             );
-        }
-        
-        frameCounter++;
-        if (frameCounter >= 10) {
-            frameCounter = 0;
-            for (int i = 0; i < timerCount; i++) {
-                UpdateTimer(&timers[i]);
-            }
         }
 
         BeginDrawing();
@@ -234,12 +252,17 @@ int main() {
             DrawRectangle(0, 0, WINDOW_WIDTH, 30, (Color){240, 240, 240, 255});
             DrawTextEx(consolasFont, "TimerDude", (Vector2){10, 5}, 20, 1, BLACK);
             
+            pthread_mutex_lock(&timerMutex);
             for (int i = 0; i < timerCount; i++) {
                 DrawTimer(&timers[i]);
             }
+            pthread_mutex_unlock(&timerMutex);
         EndDrawing();
-
     }
+    
+    threadRunning = false;
+    pthread_join(timerThread, NULL);
+    pthread_mutex_destroy(&timerMutex);
     
     if (consolasFont.texture.id != 0 && consolasFont.texture.id != GetFontDefault().texture.id) {
         UnloadFont(consolasFont);
